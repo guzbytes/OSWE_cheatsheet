@@ -6,21 +6,29 @@ A personal cheatsheet and toolkit built while preparing for the **OSWE (Offensiv
 
 ## Contents
 
-### Python (`py_*.py`)
+### Python (`python/`)
 
 | File | Covers |
 |---|---|
-| `py_01_http_requests.py` | GET/POST basics with `requests` (form, JSON, multipart, custom headers), a raw-socket request example (useful for smuggling/CRLF), and an SSRF probe against common metadata endpoints. |
-| `py_02_sqli_blind.py` | Blind SQL injection: time-based and boolean-based oracles, generic binary-search extraction (`dump_value`), and `information_schema` enumeration. |
-| `py_03_websocket.py` | WebSocket interaction: basic connect/send/receive, synchronous request-response helper, blind time-based SQLi over WS, and message fuzzing. |
-| `py_04_jwt.py` | JWT attacks: unverified decode, `alg: none`, RS256→HS256 algorithm confusion, weak-secret brute force, `kid` header injection (path traversal / SQLi), `jku` injection. |
-| `py_05_cookies_sessions.py` | Cookie/session forging: Flask (`itsdangerous`) session decode/forge, Django signed cookies, generic HMAC-signed cookies, and recognizing serialized payloads (Python pickle, PHP objects). |
+| `http_request.py` | GET/POST basics with `requests` (form, JSON, multipart, custom headers), a raw-socket request example (useful for smuggling/CRLF), and an SSRF probe against common metadata endpoints. |
+| `sql_blind.py` | Blind SQL injection: time-based and boolean-based oracles for MySQL/MSSQL/Postgres/Oracle, generic binary-search extraction (`dump_value`), and `information_schema` table/column enumeration. |
+| `ws_client.py` | WebSocket interaction: basic connect/send/receive, synchronous request-response helper, blind time-based SQLi over WS, and action fuzzing. |
+| `jwt_attacks.py` | JWT attacks: unverified decode, `alg: none`, RS256→HS256 algorithm confusion, weak-secret brute force, `kid` header injection (path traversal / SQLi), `jku` injection. |
+| `cookies.py` | Cookie/session forging: Flask (`itsdangerous`) session decode/forge, Django signed cookies, generic HMAC-signed cookies, and recognizing serialized payloads (Python pickle, PHP objects). |
+| `ssti.py` | Server-Side Template Injection: detection polyglot, engine fingerprinting, and RCE payloads for Jinja2/Twig/Freemarker/Velocity/Smarty/ERB. |
+| `rce.py` | OS command injection (reflected and blind time-based), reverse-shell one-liner generator, and a webshell command sender. |
+| `xxe.py` | XXE: local file read, PHP-filter read, OOB detection, and blind OOB exfiltration with a hostable external DTD template. |
+| `race_condition.py` | Race conditions: fire N concurrent requests released simultaneously via a barrier to beat a server-side check. |
 
-### JavaScript (`js_fetch_and_cookies.js`)
+### JavaScript (`js/`)
 
-Client-side snippets focused on `fetch()` and cookie handling for XSS/CSRF proof-of-concepts: GET/POST requests, cookie/localStorage exfiltration, CSRF token theft and reuse, ready-to-paste XSS payloads (`fetch`, `sendBeacon`, no-`<script>` variants), and `postMessage` exploitation.
+| File | Covers |
+|---|---|
+| `js_request.js` | `fetch()`-based requests (GET, JSON/form/query POST), add-admin-user variants, CSRF (with and without token theft), and `postMessage` exploitation. |
+| `js_cookies.js` | Cookie/localStorage/CSRF-token exfiltration and ready-to-paste XSS payloads (`fetch`, `sendBeacon`, no-`<script>` variants). Set `ATTACKER_HOST` at the top. |
+| `prototype_pollution.js` | Prototype-pollution payloads (JSON body and query-string variants), a JSON sender, and a local `isPolluted` confirmation helper. |
 
-### Checklist (`manual_testing_checklist.md`)
+### Checklist (`Manual_Testing.md`)
 
 A vulnerability-by-vulnerability manual testing reference: SQLi, SSTI, XXE, SSRF, insecure deserialization (Java/PHP/Python/.NET), JWT/auth bypass, IDOR, path traversal (LFI/RFI), prototype pollution, RCE, XSS, CSRF, race conditions, and open redirect/CORS misconfiguration.
 
@@ -29,11 +37,11 @@ A vulnerability-by-vulnerability manual testing reference: SQLi, SSTI, XXE, SSRF
 Each Python file is self-contained and meant to be copy-pasted/adapted per target rather than run as-is:
 
 ```bash
-pip install requests pyjwt cryptography itsdangerous websocket-client
+pip install requests pyjwt cryptography itsdangerous websocket-client flask
 ```
 
-Edit `BASE_URL` / `ATTACKER_HOST` / `target.local` placeholders at the top of each file before use.
+Edit the `BASE_URL` / `ATTACKER_IP` / `target.local` placeholders at the top of each file before use. The JavaScript snippets export their functions via `module.exports` so they can be required in Node, but are primarily meant to be pasted into a browser console or an XSS payload.
 
 ## Disclaimer
 
-For educational and authorized penetration testing purposes only. The author is not responsible for misuse.
+For educational and authorized penetration testing purposes only.

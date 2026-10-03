@@ -97,7 +97,7 @@ Quick review of what to test manually for each vuln type before automating anyth
 3. **Insecure deserialization**: see the dedicated section above.
 4. **File upload → RCE**: upload a `.php`/`.jsp`/`.asp` disguised with an image content-type, check if it's accessible and executable at the upload path.
 
-## XSS (quick reference — payloads in `js_fetch_and_cookies.js`)
+## XSS (quick reference — payloads in `js/js_cookies.js`)
 
 1. Test every parameter reflected in HTML, attributes, and JS context (`<script>`).
 2. Check the DOM: `innerHTML`, `document.write`, `eval`, use of `location.hash`/`location.search` without sanitization.
