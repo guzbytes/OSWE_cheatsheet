@@ -11,7 +11,7 @@ A personal cheatsheet and toolkit built while preparing for the **OSWE (Offensiv
 | File | Covers |
 |---|---|
 | `http_request.py` | GET/POST basics with `requests` (form, JSON, multipart, custom headers), a raw-socket request example (useful for smuggling/CRLF), and an SSRF probe against common metadata endpoints. |
-| `sql_blind.py` | Blind SQL injection: time-based and boolean-based oracles for MySQL/MSSQL/Postgres/Oracle, generic binary-search extraction (`dump_value`), and `information_schema` table/column enumeration. |
+| `sql.py` | Blind SQL injection: time-based and boolean-based oracles for MySQL/MSSQL/Postgres/Oracle, generic binary-search extraction (`dump_value`), and `information_schema` table/column enumeration. |
 | `ws_client.py` | WebSocket interaction: basic connect/send/receive, synchronous request-response helper, blind time-based SQLi over WS, and action fuzzing. |
 | `jwt_attacks.py` | JWT attacks: unverified decode, `alg: none`, RS256→HS256 algorithm confusion, weak-secret brute force, `kid` header injection (path traversal / SQLi), `jku` injection. |
 | `cookies.py` | Cookie/session forging: Flask (`itsdangerous`) session decode/forge, Django signed cookies, generic HMAC-signed cookies, and recognizing serialized payloads (Python pickle, PHP objects). |
